@@ -25,19 +25,18 @@ RUN set -ex \
             ca-certificates \
             procps \
     && apt-get install -y --force-yes software-properties-common python-software-properties \
-    # && /bin/echo debconf shared/accepted-oracle-license-v1-1 select true | /usr/bin/debconf-set-selections \
     && /bin/echo oracle-java8-installer shared/accepted-oracle-license-v1-1 select true | debconf-set-selections \
     && add-apt-repository -y ppa:webupd8team/java \
     && apt-get update \
     && apt-get install -y $BUILD_DEPS \
-
-    # Default DNS cache TTL is -1. DNS records, like, change, man.
-    # && grep '^networkaddress.cache.ttl=' /etc/java-7-openjdk/security/java.security || echo 'networkaddress.cache.ttl=60' >> /etc/java-7-openjdk/security/java.security \
+    # Update java settings so DNS changes take hold.
+    && grep '^networkaddress.cache.ttl=' /etc/java-8-oracle/security/java.security || echo 'networkaddress.cache.ttl=60' >> /etc/java-8-oracle/security/java.security \
 
     # Install jvmtop
     && wget -O /tmp/jvmtop.gz "${JVMTOP_RELEASE}" \
     && mkdir -p /opt/jvmtop \
-    && tar -xvzf /tmp/jvmtop.gz -C /opt/jvmtop --strip=1 \
+    && tar -xvzf /tmp/jvmtop.gz -C /opt/jvmtop \
+    && chmod +x /opt/jvmtop/jvmtop.sh \
     && rm /tmp/jvmtop.gz \
 
     # Install ZK

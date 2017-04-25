@@ -1,4 +1,45 @@
-#! /bin/bash -e
+#!/bin/bash -e
+# -XX:+PrintGCTimeStamps and -XX:+PrintGCDateStamps
+# HOSTNAME=`hostname --fqdn`
+# IP=$(ping -c 1 "$HOSTNAME" | grep PING| cut -d' ' -f3| cut -d'(' -f2|cut -d')' -f1)
+
+# wait 10 seconds instead of 30
+# export JVM_OPTS="${JVM_OPTS} -Dcassandra.ring_delay_ms=10000"
+# The flag Xmx specifies the maximum memory allocation pool for a Java Virtual Machine (JVM), 
+# while Xms specifies the initial memory allocation pool.
+
+# ENV ZINC_COMMAND=" \
+#     java \
+#     -server \
+#     -XX:+UseG1GC \
+#     -XX:+DoEscapeAnalysis \
+#     -XX:+UseCompressedOops \
+#     -XX:+UseCompressedClassPointers \
+#     -XX:+HeapDumpOnOutOfMemoryError \
+#     -XX:InitialHeapSize=$JAVA_HEAP \
+#     -XX:MaxHeapSize=$JAVA_HEAP \
+#     -XX:ThreadStackSize=$JAVA_STACK \
+#     -XX:MetaspaceSize=$JAVA_META \
+#     -XX:MaxMetaspaceSize=$JAVA_META \
+#     -XX:InitialCodeCacheSize=$JAVA_CODE \
+#     -XX:ReservedCodeCacheSize=$JAVA_CODE \
+#     -Dzinc.home=$ZINC_FOLDER \
+#     -classpath $ZINC_FOLDER/lib/*:. \
+#     com.typesafe.zinc.Nailgun \
+#     $ZINC_PORT $ZINC_TIMEOUT \
+# "
+
+# source: https://github.com/apache/storm/blob/master/conf/defaults.yaml
+# ### worker.* configs are for task workers
+# worker.heap.memory.mb: 768
+# worker.childopts: "-Xmx%HEAP-MEM%m -XX:+PrintGCDetails -Xloggc:artifacts/gc.log -XX:+PrintGCDateStamps -XX:+PrintGCTimeStamps -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=1M -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=artifacts/heapdump"
+# worker.gc.childopts: ""
+
+export EXHIBITOR_JVM_OPTS="-Xmx512m"
+export ZK_JVM_OPTS="-XX:+PrintCommandLineFlags -XX:+PrintGC -XX:+PrintGCCause -XX:+PrintGCDetails -XX:+PrintGCTimeStamps -XX:+PrintGCDateStamps -XX:+PrintGCApplicationConcurrentTime -XX:+PrintGCApplicationStoppedTime -XX:+PrintTenuringDistribution -XX:+PrintAdaptiveSizePolicy -Xmx2g -Xms2g -XX:+AlwaysPreTouch -Xss512k"
+# NOTE: This is set by default in zookeeper according to this 
+# source: https://issues.apache.org/jira/browse/ZOOKEEPER-1670
+# export SERVER_JVMFLAGS=""
 
 # Generates the default exhibitor config and launches exhibitor
 
@@ -39,6 +80,36 @@ cat <<- EOF > /opt/exhibitor/defaults.conf
 	auto-manage-instances-fixed-ensemble-size=$ZK_ENSEMBLE_SIZE
 EOF
 
+# TODO: Add this back in? ^
+# java-environment=export JAVA_OPTS\="$JAVA_OPTS"
+
+# https://github.com/mesosphere/universe/blob/version-3.x/repo/packages/E/exhibitor/1/config.json
+# "jvm_opts": {
+# 	"default": "-Xmx512m",
+# 	"description": "JVM opts for Exhibitor",
+# 	"type": "string"
+
+# "zookeeper": {
+# 	"description": "ZooKeeper specific configuration properties",
+# 	"properties": {
+# 		"jvm_opts": {
+# 			"default": "-XX:+PrintCommandLineFlags -XX:+PrintGC -XX:+PrintGCCause -XX:+PrintGCDetails -XX:+PrintGCTimeStamps -XX:+PrintGCDateStamps -XX:+PrintGCApplicationConcurrentTime -XX:+PrintGCApplicationStoppedTime -XX:+PrintTenuringDistribution -XX:+PrintAdaptiveSizePolicy -Xmx2g -Xms2g -XX:+AlwaysPreTouch -Xss512k",
+# 			"description": "JVM opts for Exhibitor",
+# 			"type": "string"
+# 		},
+
+#   ],
+#   "env": {
+#     "EXHIBITOR_JVM_OPTS": "{{exhibitor.jvm_opts}}",
+#     "ZK_JVM_OPTS": "{{exhibitor.zookeeper.jvm_opts}}"
+#   },
+#   "cmd": "/exhibitor-wrapper -c zookeeper --headingtext \"{{exhibitor.app-id}}\" --zkconfigconnect {{exhibitor.zk_servers}} --zkconfigzpath \"/exhibitor-dcos{{exhibitor.app-id}}\""
+# }
+
+# NEW, ENVIRONMENT VAR
+cat <<EOF > /opt/zookeeper/conf/java.env
+SERVER_JVMFLAGS="$SERVER_JVMFLAGS $ZK_JVM_OPTS"
+EOF
 
 if [[ -n ${AWS_ACCESS_KEY_ID} ]]; then
   cat <<- EOF > /opt/exhibitor/credentials.properties
@@ -87,7 +158,7 @@ exec 2>&1
 # 	--s3credentials /opt/exhibitor/credentials.properties \
 # 	--s3region us-west-2 --s3backup true
 
-java -jar /opt/exhibitor/exhibitor.jar \
+java $EXHIBITOR_JVM_OPTS -jar /opt/exhibitor/exhibitor.jar \
   --port 8181 --defaultconfig /opt/exhibitor/defaults.conf \
   ${BACKUP_CONFIG} \
   ${HTTP_PROXY} \

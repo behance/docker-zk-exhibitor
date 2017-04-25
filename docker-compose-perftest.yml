@@ -10,3 +10,11 @@ services:
     ports:
       - 2181:2181
       - 8181:8181
+  zk-smoketest:
+    build:
+      context: .
+      dockerfile: Dockerfile-zk-smoketest
+    stdin_open: true
+    tty: true
+    entrypoint:
+      - "/bin/bash"
