@@ -1,48 +1,11 @@
 #!/bin/bash -e
-# -XX:+PrintGCTimeStamps and -XX:+PrintGCDateStamps
-# HOSTNAME=`hostname --fqdn`
-# IP=$(ping -c 1 "$HOSTNAME" | grep PING| cut -d' ' -f3| cut -d'(' -f2|cut -d')' -f1)
 
-# wait 10 seconds instead of 30
-# export JVM_OPTS="${JVM_OPTS} -Dcassandra.ring_delay_ms=10000"
-# The flag Xmx specifies the maximum memory allocation pool for a Java Virtual Machine (JVM), 
-# while Xms specifies the initial memory allocation pool.
-
-# ENV ZINC_COMMAND=" \
-#     java \
-#     -server \
-#     -XX:+UseG1GC \
-#     -XX:+DoEscapeAnalysis \
-#     -XX:+UseCompressedOops \
-#     -XX:+UseCompressedClassPointers \
-#     -XX:+HeapDumpOnOutOfMemoryError \
-#     -XX:InitialHeapSize=$JAVA_HEAP \
-#     -XX:MaxHeapSize=$JAVA_HEAP \
-#     -XX:ThreadStackSize=$JAVA_STACK \
-#     -XX:MetaspaceSize=$JAVA_META \
-#     -XX:MaxMetaspaceSize=$JAVA_META \
-#     -XX:InitialCodeCacheSize=$JAVA_CODE \
-#     -XX:ReservedCodeCacheSize=$JAVA_CODE \
-#     -Dzinc.home=$ZINC_FOLDER \
-#     -classpath $ZINC_FOLDER/lib/*:. \
-#     com.typesafe.zinc.Nailgun \
-#     $ZINC_PORT $ZINC_TIMEOUT \
-# "
-
-# source: https://github.com/apache/storm/blob/master/conf/defaults.yaml
-# ### worker.* configs are for task workers
-# worker.heap.memory.mb: 768
-# worker.childopts: "-Xmx%HEAP-MEM%m -XX:+PrintGCDetails -Xloggc:artifacts/gc.log -XX:+PrintGCDateStamps -XX:+PrintGCTimeStamps -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=1M -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=artifacts/heapdump"
-# worker.gc.childopts: ""
-
-export EXHIBITOR_JVM_OPTS="-Xmx512m"
-export ZK_JVM_OPTS="-XX:+PrintCommandLineFlags -XX:+PrintGC -XX:+PrintGCCause -XX:+PrintGCDetails -XX:+PrintGCTimeStamps -XX:+PrintGCDateStamps -XX:+PrintGCApplicationConcurrentTime -XX:+PrintGCApplicationStoppedTime -XX:+PrintTenuringDistribution -XX:+PrintAdaptiveSizePolicy -Xmx2g -Xms2g -XX:+AlwaysPreTouch -Xss512k"
-# NOTE: This is set by default in zookeeper according to this 
-# source: https://issues.apache.org/jira/browse/ZOOKEEPER-1670
-# export SERVER_JVMFLAGS=""
-
-# Generates the default exhibitor config and launches exhibitor
-
+# Legend
+# -Xms = -XX:InitialHeapSize
+# -Xmx = -XX:MaxHeapSize)
+# -Xmx2g -Xms2g 
+DEFAULT_ZK_JAVA_INITIAL_HEAP_SIZE="-XX:InitialHeapSize=2g"
+DEFAULT_ZK_JAVA_MAX_HEAP_SIZE="-XX:MaxHeapSize=2g"
 MISSING_VAR_MESSAGE="must be set"
 DEFAULT_AWS_REGION="us-west-2"
 DEFAULT_DATA_DIR="/opt/zookeeper/snapshots"
@@ -59,7 +22,51 @@ HTTP_PROXY=""
 : ${HTTP_PROXY_PORT:=""}
 : ${HTTP_PROXY_USERNAME:=""}
 : ${HTTP_PROXY_PASSWORD:=""}
+: ${ZK_JAVA_INITIAL_HEAP_SIZE:=$DEFAULT_ZK_JAVA_INITIAL_HEAP_SIZE}
+: ${ZK_JAVA_MAX_HEAP_SIZE:=$DEFAULT_ZK_JAVA_MAX_HEAP_SIZE}
 
+# NOTE: ZK_JAVA_OPTS is an environment var we use to append several java cmdline flags together
+# Enables printing of ergonomically selected JVM flags that appeared on the command line.
+ZK_JAVA_OPTS="-XX:+PrintCommandLineFlags"
+# Prints garbage collection output.
+ZK_JAVA_OPTS="$ZK_JAVA_OPTS -XX:+PrintGC"
+# Explain what caused garbage collection
+ZK_JAVA_OPTS="$ZK_JAVA_OPTS -XX:+PrintGCCause"
+# Prints garbage collection output along with time stamps.
+ZK_JAVA_OPTS="$ZK_JAVA_OPTS -XX:+PrintGCDetails -XX:+PrintGCTimeStamps -XX:+PrintGCDateStamps"
+#  instruct the Java process to print the time an application is actually running, 
+# as well as the time the application was stopped due to GC events
+ZK_JAVA_OPTS="$ZK_JAVA_OPTS -XX:+PrintGCApplicationConcurrentTime -XX:+PrintGCApplicationStoppedTime"
+# With this flag we tell the JVM to print the age distribution of all objects contained 
+# in the survivor spaces on each young generation GC.
+# source: https://blog.codecentric.de/en/2012/08/useful-jvm-flags-part-5-young-generation-garbage-collection/
+ZK_JAVA_OPTS="$ZK_JAVA_OPTS -XX:+PrintTenuringDistribution"
+# With this flag, we get information on how G1 makes Ergonomic decisions.
+# source: https://blogs.oracle.com/g1gc/entry/g1_gc_tuning_a_case
+ZK_JAVA_OPTS="$ZK_JAVA_OPTS -XX:+PrintAdaptiveSizePolicy"
+# Pre-touch the Java heap during JVM initialization. 
+# Every page of the heap is thus demand-zeroed during initialization rather 
+# than incrementally during application execution.
+ZK_JAVA_OPTS="$ZK_JAVA_OPTS -XX:+AlwaysPreTouch"
+# set java thread stack size
+# source: https://www.mkyong.com/java/find-out-your-java-heap-memory-size/
+ZK_JAVA_OPTS="$ZK_JAVA_OPTS -Xss512k"
+# Set initial Java heap size
+ZK_JAVA_OPTS="$ZK_JAVA_OPTS $ZK_JAVA_INITIAL_HEAP_SIZE"
+# Set maximum Java heap size
+ZK_JAVA_OPTS="$ZK_JAVA_OPTS $ZK_JAVA_MAX_HEAP_SIZE"
+
+# HOSTNAME=`hostname --fqdn`
+# IP=$(ping -c 1 "$HOSTNAME" | grep PING| cut -d' ' -f3| cut -d'(' -f2|cut -d')' -f1)
+
+export EXHIBITOR_JVM_OPTS="-Xmx512m"
+# NOTE: Options should look like this when done "-XX:+PrintCommandLineFlags -XX:+PrintGC -XX:+PrintGCCause -XX:+PrintGCDetails -XX:+PrintGCTimeStamps -XX:+PrintGCDateStamps -XX:+PrintGCApplicationConcurrentTime -XX:+PrintGCApplicationStoppedTime -XX:+PrintTenuringDistribution -XX:+PrintAdaptiveSizePolicy -Xmx2g -Xms2g -XX:+AlwaysPreTouch -Xss512k"
+export ZK_JVM_OPTS="$ZK_JAVA_OPTS"
+# NOTE: This is set by default in zookeeper according to this 
+# source: https://issues.apache.org/jira/browse/ZOOKEEPER-1670
+# export SERVER_JVMFLAGS=""
+
+# Generates the default exhibitor config and launches exhibitor
 cat <<- EOF > /opt/exhibitor/defaults.conf
 	zookeeper-data-directory=$ZK_DATA_DIR
 	zookeeper-install-directory=/opt/zookeeper
@@ -80,33 +87,7 @@ cat <<- EOF > /opt/exhibitor/defaults.conf
 	auto-manage-instances-fixed-ensemble-size=$ZK_ENSEMBLE_SIZE
 EOF
 
-# TODO: Add this back in? ^
-# java-environment=export JAVA_OPTS\="$JAVA_OPTS"
-
-# https://github.com/mesosphere/universe/blob/version-3.x/repo/packages/E/exhibitor/1/config.json
-# "jvm_opts": {
-# 	"default": "-Xmx512m",
-# 	"description": "JVM opts for Exhibitor",
-# 	"type": "string"
-
-# "zookeeper": {
-# 	"description": "ZooKeeper specific configuration properties",
-# 	"properties": {
-# 		"jvm_opts": {
-# 			"default": "-XX:+PrintCommandLineFlags -XX:+PrintGC -XX:+PrintGCCause -XX:+PrintGCDetails -XX:+PrintGCTimeStamps -XX:+PrintGCDateStamps -XX:+PrintGCApplicationConcurrentTime -XX:+PrintGCApplicationStoppedTime -XX:+PrintTenuringDistribution -XX:+PrintAdaptiveSizePolicy -Xmx2g -Xms2g -XX:+AlwaysPreTouch -Xss512k",
-# 			"description": "JVM opts for Exhibitor",
-# 			"type": "string"
-# 		},
-
-#   ],
-#   "env": {
-#     "EXHIBITOR_JVM_OPTS": "{{exhibitor.jvm_opts}}",
-#     "ZK_JVM_OPTS": "{{exhibitor.zookeeper.jvm_opts}}"
-#   },
-#   "cmd": "/exhibitor-wrapper -c zookeeper --headingtext \"{{exhibitor.app-id}}\" --zkconfigconnect {{exhibitor.zk_servers}} --zkconfigzpath \"/exhibitor-dcos{{exhibitor.app-id}}\""
-# }
-
-# NEW, ENVIRONMENT VAR
+# Cat environment vars to /opt/zookeeper/conf/java.env
 cat <<EOF > /opt/zookeeper/conf/java.env
 SERVER_JVMFLAGS="$SERVER_JVMFLAGS $ZK_JVM_OPTS"
 EOF
